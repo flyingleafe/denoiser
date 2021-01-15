@@ -14,6 +14,10 @@ import sys
 import torch
 import torchaudio
 
+from pathlib import PurePath
+from os import path as ospath
+from tqdm import tqdm
+
 from .audio import Audioset, find_audio_files
 from . import distrib, pretrained
 from .demucs import DemucsStreamer
@@ -69,20 +73,24 @@ def get_estimate(model, noisy, args):
     return estimate
 
 
-def save_wavs(estimates, noisy_sigs, filenames, out_dir, sr=16_000):
+def save_wavs(estimates, noisy_sigs, filenames, in_dir, out_dir, sr=16_000):
     # Write result
     for estimate, noisy, filename in zip(estimates, noisy_sigs, filenames):
-        filename = os.path.join(out_dir, os.path.basename(filename).rsplit(".", 1)[0])
+        rel_path = PurePath(filename).relative_to(in_dir)
+        out_path = out_dir / rel_path
+        os.makedirs(str(out_path.parent), exist_ok=True)
+        filename = str(out_path)
+        
         write(noisy, filename + "_noisy.wav", sr=sr)
         write(estimate, filename + "_enhanced.wav", sr=sr)
 
-
+        
 def write(wav, filename, sr=16_000):
     # Normalize audio if it prevents clipping
     wav = wav / max(wav.abs().max().item(), 1)
     torchaudio.save(filename, wav.cpu(), sr)
 
-
+    
 def get_dataset(args):
     if hasattr(args, 'dset'):
         paths = args.dset
@@ -98,7 +106,9 @@ def get_dataset(args):
             "Small sample set was not provided by either noisy_dir or noisy_json. "
             "Skipping enhancement.")
         return None
-    return Audioset(files, with_path=True, sample_rate=args.sample_rate)
+    
+    in_dir = ospath.commonpath([f[0] for f in files])
+    return Audioset(files, with_path=True, sample_rate=args.sample_rate), in_dir
 
 
 def enhance(args, model=None, local_out_dir=None):
@@ -111,9 +121,11 @@ def enhance(args, model=None, local_out_dir=None):
     else:
         out_dir = args.out_dir
 
-    dset = get_dataset(args)
-    if dset is None:
+    dset_and_dir = get_dataset(args)
+    if dset_and_dir is None:
         return
+    
+    dset, in_dir = dset_and_dir
     loader = distrib.loader(dset, batch_size=1)
 
     if distrib.rank == 0:
@@ -122,13 +134,13 @@ def enhance(args, model=None, local_out_dir=None):
 
     with torch.no_grad():
         iterator = LogProgress(logger, loader, name="Generate enhanced files")
-        for data in iterator:
+        for data in tqdm(iterator, 'Generate enhanced files'):
             # Get batch data
             noisy_signals, filenames = data
             noisy_signals = noisy_signals.to(args.device)
             # Forward
             estimate = get_estimate(model, noisy_signals, args)
-            save_wavs(estimate, noisy_signals, filenames, out_dir, sr=args.sample_rate)
+            save_wavs(estimate, noisy_signals, filenames, in_dir, out_dir, sr=args.sample_rate)
 
 
 if __name__ == "__main__":

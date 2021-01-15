@@ -10,6 +10,7 @@ import logging
 import os
 import re
 
+from pathlib import PurePath
 from .audio import Audioset
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,25 @@ def match_dns(noisy, clean):
     extra_clean.sort()
     clean += extra_clean
     noisy += extra_noisy
+    
 
-
+def timit_get_essential_name(path, mixed=False):
+    path = PurePath(path)
+    rel_path = str(path.relative_to(path.parents[2]))
+    suffix_offset = 2 if mixed else 1
+    return '.'.join(rel_path.split('.')[:-suffix_offset])
+    
+def match_timit(noisy, clean):
+    clean_paths = {}
+    for clean_path, size in clean:
+        key = timit_get_essential_name(clean_path)
+        clean_paths[key] = clean_path, size
+    
+    clean[:] = []
+    for noisy_path, size in noisy:
+        key = timit_get_essential_name(noisy_path, mixed=True)
+        clean.append(clean_paths[key])
+                
 def match_files(noisy, clean, matching="sort"):
     """match_files.
     Sort files to match noisy and clean filenames.
@@ -59,6 +77,8 @@ def match_files(noisy, clean, matching="sort"):
     if matching == "dns":
         # dns dataset filenames don't match when sorted, we have to manually match them
         match_dns(noisy, clean)
+    elif matching == "timit":
+        match_timit(noisy, clean)
     elif matching == "sort":
         noisy.sort()
         clean.sort()

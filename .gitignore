@@ -7,9 +7,11 @@ enhanced/
 .vim
 models/
 private/
+pythonenv/
 dist
 build
 *.egg-info
 *.th
 launch_master.sh
 conf/dset/master.yaml
+*.ipynb_checkpoints

@@ -10,9 +10,11 @@ from concurrent.futures import ProcessPoolExecutor
 import json
 import logging
 import sys
+import time
 
 from pesq import pesq
 from pystoi import stoi
+from tqdm import tqdm
 import torch
 
 from .data import NoisyCleanSet
@@ -27,6 +29,7 @@ parser = argparse.ArgumentParser(
         description='Speech enhancement using Demucs - Evaluate model performance')
 add_flags(parser)
 parser.add_argument('--data_dir', help='directory including noisy.json and clean.json files')
+parser.add_argument('--eval_input', action="store_true", help='calculate evaluation metrics for unaltered noisy speech')
 parser.add_argument('--matching', default="sort", help='set this to dns for the dns dataset.')
 parser.add_argument('--no_pesq', action="store_false", dest="pesq", default=True,
                     help="Don't compute PESQ.")
@@ -41,34 +44,41 @@ def evaluate(args, model=None, data_loader=None):
     updates = 5
 
     # Load model
-    if not model:
-        model = pretrained.get_model(args).to(args.device)
-    model.eval()
+    if not args.eval_input:
+        if not model:
+            model = pretrained.get_model(args).to(args.device)
+        model.eval()
 
     # Load data
     if data_loader is None:
         dataset = NoisyCleanSet(args.data_dir, matching=args.matching, sample_rate=args.sample_rate)
         data_loader = distrib.loader(dataset, batch_size=1, num_workers=2)
+        
     pendings = []
     with ProcessPoolExecutor(args.num_workers) as pool:
         with torch.no_grad():
             iterator = LogProgress(logger, data_loader, name="Eval estimates")
-            for i, data in enumerate(iterator):
+            for i, data in enumerate(tqdm(iterator, 'Evaluating')):
                 # Get batch data
                 noisy, clean = [x.to(args.device) for x in data]
                 # If device is CPU, we do parallel evaluation in each CPU worker.
-                if args.device == 'cpu':
+                if args.eval_input:
                     pendings.append(
-                        pool.submit(_estimate_and_run_metrics, clean, model, noisy, args))
+                        pool.submit(_run_metrics, clean.cpu(), noisy.cpu(), args))
+                    time.sleep(0.05)
                 else:
-                    estimate = get_estimate(model, noisy, args)
-                    estimate = estimate.cpu()
-                    clean = clean.cpu()
-                    pendings.append(
-                        pool.submit(_run_metrics, clean, estimate, args))
+                    if args.device == 'cpu':
+                        pendings.append(
+                            pool.submit(_estimate_and_run_metrics, clean, model, noisy, args))
+                    else:
+                        estimate = get_estimate(model, noisy, args)
+                        estimate = estimate.cpu()
+                        clean = clean.cpu()
+                        pendings.append(
+                            pool.submit(_run_metrics, clean, estimate, args))
                 total_cnt += clean.shape[0]
 
-        for pending in LogProgress(logger, pendings, updates, name="Eval metrics"):
+        for pending in tqdm(LogProgress(logger, pendings, updates, name="Eval metrics"), 'Collecting pending jobs'):
             pesq_i, stoi_i = pending.result()
             total_pesq += pesq_i
             total_stoi += stoi_i

@@ -13,22 +13,21 @@ import sys
 
 import torchaudio
 from torch.nn import functional as F
+from tqdm import tqdm
 
 
-def find_audio_files(path, exts=[".wav"], progress=True):
+def find_audio_files(path, exts=[".wav"]):
     audio_files = []
     for root, folders, files in os.walk(path, followlinks=True):
         for file in files:
             file = Path(root) / file
-            if file.suffix.lower() in exts:
+            if file.suffix in exts:
                 audio_files.append(str(file.resolve()))
     meta = []
-    for idx, file in enumerate(audio_files):
+    for idx, file in enumerate(tqdm(audio_files, 'Reading file sizes')):
         siginfo, _ = torchaudio.info(file)
         length = siginfo.length // siginfo.channels
         meta.append((file, length))
-        if progress:
-            print(format((1 + idx) / len(audio_files), " 3.1%"), end='\r', file=sys.stderr)
     meta.sort()
     return meta
 

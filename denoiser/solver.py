@@ -14,6 +14,8 @@ import time
 import torch
 import torch.nn.functional as F
 
+from tqdm import tqdm
+
 from . import augment, distrib, pretrained
 from .enhance import enhance
 from .evaluate import evaluate
@@ -197,7 +199,7 @@ class Solver(object):
         label = ["Train", "Valid"][cross_valid]
         name = label + f" | Epoch {epoch + 1}"
         logprog = LogProgress(logger, data_loader, updates=self.num_prints, name=name)
-        for i, data in enumerate(logprog):
+        for i, data in enumerate(tqdm(logprog, 'Training')):
             noisy, clean = [x.to(self.device) for x in data]
             if not cross_valid:
                 sources = torch.stack([noisy - clean, clean])

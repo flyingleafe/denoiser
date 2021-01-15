@@ -1,0 +1,11 @@
+dset:
+  train: egs/timit/tr
+  valid:
+  test: egs/timit/tt
+  noisy_json: egs/timit/tt/noisy.json
+  noisy_dir:
+  matching: timit
+eval_every: 50
+pesq: 1
+epochs: 50
+batch_size: 32

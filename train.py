@@ -15,7 +15,6 @@ from denoiser.executor import start_ddp_workers
 
 logger = logging.getLogger(__name__)
 
-
 def run(args):
     import torch
 
@@ -65,6 +64,7 @@ def run(args):
     # torch also initialize cuda seed if available
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
+        print('Cuda is available.')
         model.cuda()
 
     # optimizer

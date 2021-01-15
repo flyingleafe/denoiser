@@ -28,6 +28,9 @@ def init(args):
         assert args.rank is not None and args.world_size is not None
         rank = args.rank
         world_size = args.world_size
+    elif args.rank is not None:
+        torch.cuda.set_device(args.rank)
+        
     if world_size == 1:
         return
     torch.cuda.set_device(rank)
